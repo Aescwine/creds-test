@@ -1,0 +1,144 @@
+// prisma/schema.prisma
+// SQLite-backed schema for the MVP (users, assets, files, EIP-712 passports)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // e.g. file:./dev.db
+}
+
+enum AssetStatus {
+  DRAFT
+  UPLOADED
+  SIGNED
+  PUBLISHED
+  ERROR
+}
+
+enum FileVariant {
+  ORIGINAL
+  CREDENTIALED
+  THUMB
+}
+
+enum JobStatus { 
+  QUEUED 
+  RUNNING 
+  DONE 
+  FAILED 
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String?  @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  role          Role    @default(USER)
+
+  // Wallet linkage (set after wallet link flow)
+  walletAddress String?  @unique
+  walletChainId Int?
+
+  // DKG user knowledge asset UAL (set after creation)
+  userUAL       String?  @unique
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assets        Asset[]
+
+  // KA queue/status
+  kaPending     Boolean  @default(false)
+  kaError       String?
+  kaAttempts    Int      @default(0)
+  kaQueuedAt    DateTime?
+}
+
+model Asset {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title        String?
+  mime         String?
+  size         Int?
+
+  // Storage + identity
+  ipfsCid      String?       // CID of the distributed (credentialed) file
+  contentHash  String?       // sha256 of credentialed bytes (hex or base64)
+
+  // DKG & chain linkage
+  ual          String?   @unique   // DKG UAL when minted/published
+  ownerAddress String?            // current on-chain owner (if NFT transfer used)
+  custody      String?            // "platform" | "user" (UX hint)
+
+  status       AssetStatus @default(DRAFT)
+  error        String?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  files        File[]
+  passports    Passport[]
+
+  @@index([userId, status])
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  subjectId    String?
+
+  type         String
+  payload      Json
+  status       JobStatus @default(QUEUED)
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(5)
+  scheduledAt  DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  error        String?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([type, status, scheduledAt])
+  @@index([type, subjectId, status]) // fast dedupe
+}
+
+model File {
+  id        String      @id @default(cuid())
+  assetId   String
+  asset     Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  variant   FileVariant
+  url       String
+  mime      String
+  size      Int?
+  createdAt DateTime    @default(now())
+
+  @@unique([assetId, variant])
+}
+
+model Passport {
+  id             String   @id @default(cuid())
+  assetId        String
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // EIP-712 proof captured at publish/update time
+  signerAddress  String              // recovered 0x... address
+  eip712Domain   Json
+  eip712Types    Json
+  eip712Message  Json
+  signature      String
+
+  createdAt      DateTime @default(now())
+
+  @@index([assetId, signerAddress])
+}

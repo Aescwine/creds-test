@@ -2,26 +2,41 @@
   "name": "c2pa-signer",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "patch-package",
+    "worker": "tsx src/scripts/worker-jobs.ts"
   },
   "dependencies": {
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.5.5"
+    "@prisma/client": "^6.17.1",
+    "bcryptjs": "^3.0.2",
+    "dkg.js": "^8.1.1-rc.4",
+    "ipfs-http-client": "^60.0.1",
+    "jsonld": "^8.3.3",
+    "kubo-rpc-client": "^6.0.2",
+    "next": "^15.5.5",
+    "next-auth": "^5.0.0-beta.29",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/jsonld": "^1.5.15",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.5.5",
-    "@eslint/eslintrc": "^3"
+    "patch-package": "^8.0.1",
+    "prisma": "^6.17.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.20.6",
+    "typescript": "^5"
   }
 }

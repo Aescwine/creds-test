@@ -1,0 +1,32 @@
+diff --git a/node_modules/assertion-tools/src/knowledge-asset-tools.js b/node_modules/assertion-tools/src/knowledge-asset-tools.js
+index 517bbb2..09c8d70 100644
+--- a/node_modules/assertion-tools/src/knowledge-asset-tools.js
++++ b/node_modules/assertion-tools/src/knowledge-asset-tools.js
+@@ -1,5 +1,5 @@
+ import jsonld from "jsonld";
+-import ethers from "ethers";
++import { ethers } from "ethers";
+ import { v4 as uuidv4 } from "uuid";
+ import { MerkleTree } from "merkletreejs";
+ import {
+diff --git a/node_modules/assertion-tools/src/knowledge-collection-tools.js b/node_modules/assertion-tools/src/knowledge-collection-tools.js
+index ff12f38..0e70f74 100644
+--- a/node_modules/assertion-tools/src/knowledge-collection-tools.js
++++ b/node_modules/assertion-tools/src/knowledge-collection-tools.js
+@@ -1,5 +1,5 @@
+ import jsonld from "jsonld";
+-import ethers from "ethers";
++import { ethers } from "ethers";
+ import N3 from "n3";
+ import { v4 as uuidv4 } from "uuid";
+ import { MerkleTree } from "merkletreejs";
+diff --git a/node_modules/assertion-tools/src/utils.js b/node_modules/assertion-tools/src/utils.js
+index bc91430..6824719 100644
+--- a/node_modules/assertion-tools/src/utils.js
++++ b/node_modules/assertion-tools/src/utils.js
+@@ -1,4 +1,4 @@
+-import ethers from 'ethers';
++import { ethers } from "ethers";
+ 
+ export default function arraifyKeccak256(data) {
+   let bytesLikeData = data;
