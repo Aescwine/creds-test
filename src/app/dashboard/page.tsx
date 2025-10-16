@@ -40,29 +40,10 @@ export default async function Dashboard() {
                         <span>{user?.createdAt?.toLocaleString?.() ?? "—"}</span>
                         <span className="text-slate-500">Updated</span>
                         <span>{user?.updatedAt?.toLocaleString?.() ?? "—"}</span>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Knowledge Asset card */}
-            <Card>
-                <CardHeader><h2 className="font-semibold">Knowledge Asset</h2></CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                    <div className="grid grid-cols-2 gap-y-2">
-                        <span className="text-slate-500">Status</span>
+                        <span className="text-slate-500">User knowledge asset</span>
                         <span>
                             {user?.userUAL ? "Verified" : user?.kaPending ? "Creating…" : user?.kaError ? "Error" : "Not created"}
                         </span>
-                        <span className="text-slate-500">UAL</span>
-                        <span className="font-mono break-all">{user?.userUAL ?? "—"}</span>
-                        {(user?.kaError || user?.kaAttempts) && (
-                            <>
-                                <span className="text-slate-500">Attempts</span>
-                                <span>{user?.kaAttempts ?? 0}</span>
-                                <span className="text-slate-500">Last error</span>
-                                <span className="text-red-700">{user?.kaError ?? "—"}</span>
-                            </>
-                        )}
                     </div>
                 </CardContent>
             </Card>

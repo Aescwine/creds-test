@@ -1,4 +1,3 @@
-// src/auth.ts
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/db";
@@ -19,12 +18,12 @@ export const {
         Google({
             clientId: process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-            allowDangerousEmailAccountLinking: true,
+            allowDangerousEmailAccountLinking: true, // ok for POC
         }),
     ],
 
     callbacks: {
-        // Persist/locate user + enqueue KA (runs on Node during sign-in)
+        // 1) Persist/locate the user
         async signIn({ user, account }) {
             if (account?.provider !== "google") return false;
             const email = user.email?.toLowerCase().trim();
@@ -33,40 +32,31 @@ export const {
             const dbUser = await prisma.user.upsert({
                 where: { email },
                 update: { email },
-                create: { email }, // role defaults to USER in Prisma schema
+                create: { email },
                 select: { id: true, userUAL: true, kaPending: true },
             });
 
             if (!dbUser.userUAL && !dbUser.kaPending) {
                 const content: { public: PersonLD } = {
                     public: {
-                        "@context": "https://schema.org",
-                        "@type": "Person",
-                        "@id": "urn:user:" + dbUser.id,
-                    },
+                        '@context': 'https://schema.org',
+                        '@type': 'Person',
+                        '@id': 'urn:user:' + dbUser.id
+                        // 'email': email,
+                        // 'walletAddress': dbUser.walletAddress ?? undefined
+                    }
                 };
-                try { await enqueueCreateUserKA(dbUser.id, content); } catch { }
+
+                try { await enqueueCreateUserKA(dbUser.id, content); } catch { /* ignore */ }
             }
             return true;
         },
 
-        // Enrich JWT with id + role on Node only; never hit Prisma on Edge
-        async jwt({ token, trigger, account }) {
-            // On middleware/Edge: just return token as-is (it will already have role from a Node run)
+        // Attach our local user id to JWT for easy access
+        async jwt({ token }) {
             if (isEdgeRuntime()) return token;
 
-            // On initial sign-in or any Node request, fetch from DB and cache in token
-            if (token?.sub) {
-                const dbUser = await prisma.user.findUnique({
-                    where: { id: token.sub },
-                    select: { id: true, role: true, email: true },
-                });
-                if (dbUser) {
-                    (token as any).id = dbUser.id;
-                    (token as any).role = dbUser.role; // "USER" | "ADMIN"
-                    token.email = dbUser.email ?? token.email ?? undefined;
-                }
-            } else if (token?.email) {
+            if (token?.email) {
                 const dbUser = await prisma.user.findUnique({
                     where: { email: token.email.toLowerCase().trim() },
                     select: { id: true, role: true, email: true },
@@ -80,7 +70,7 @@ export const {
         },
 
         async session({ session, token }) {
-            if (session.user) {
+           if (session.user) {
                 if ((token as any).id) (session.user as any).id = (token as any).id as string;
                 if ((token as any).role) (session.user as any).role = (token as any).role as "USER" | "ADMIN";
             }
@@ -95,6 +85,6 @@ export const {
             return role === "ADMIN";
         },
     },
-
+    
     secret: process.env.AUTH_SECRET,
 });
