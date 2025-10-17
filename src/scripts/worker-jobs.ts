@@ -4,6 +4,7 @@ import path from "path";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { createKnowledgeAsset } from "@/lib/dkg";
 import { ipfsAddBytes } from "@/lib/ipfs";
+import { PersonLD } from "@/lib/dkg";
 
 const prisma = new PrismaClient();
 
@@ -74,7 +75,16 @@ async function processCreateUserKA(job: any) {
         return;
     }
 
-    const content = job.payload as any;
+    const content: { public: PersonLD } = {
+        public: {
+            '@context': 'https://schema.org',
+            '@type': 'Person',
+            '@id': 'urn:user:' + userId,
+            'email': 'test.email@email.com',
+            // 'walletAddress': dbUser.walletAddress ?? undefined
+        }
+    };
+
     const result = await createKnowledgeAsset(content);
 
     await prisma.user.update({
@@ -88,7 +98,7 @@ async function processCreateUserKA(job: any) {
 /** Pin ORIGINAL file to IPFS (Kubo) and record CID/URI. */
 async function processPinAssetToIPFS(job: any) {
     const assetId = job.subjectId as string | undefined;
-    if (!assetId) throw new Error("Missing assetId in payload");
+    if (!assetId) throw new Error("Missing assetId in subjectId");
 
     const [asset, original] = await Promise.all([
         prisma.asset.findUnique({ where: { id: assetId }, select: { id: true, ipfsCid: true, status: true } }),
@@ -106,7 +116,7 @@ async function processPinAssetToIPFS(job: any) {
     const { cid, uri } = await ipfsAddBytes(new Uint8Array(data), { filename });
 
     await prisma.$transaction([
-        prisma.asset.update({ where: { id: assetId }, data: { ipfsCid: cid, status: "PUBLISHED" } }),
+        prisma.asset.update({ where: { id: assetId }, data: { ipfsCid: cid, status: "PINNED" } }),
         prisma.file.upsert({
             where: { assetId_variant: { assetId, variant: "CREDENTIALED" } }, // adjust if you use a different variant
             create: { assetId, variant: "CREDENTIALED", url: uri, mime: original.mime },
@@ -115,6 +125,93 @@ async function processPinAssetToIPFS(job: any) {
     ]);
 
     console.log("[worker] IPFS pinned", { jobId: job.id, assetId, cid, uri });
+}
+
+async function processPublishAssetKA(job: any) {
+    const assetId = job.subjectId as string;
+    if (!assetId) throw new Error("Missing assetId in subjectId");
+
+    // Load asset, user, and original file
+    const asset = await prisma.asset.findUnique({
+        where: { id: assetId },
+        select: {
+            id: true,
+            userId: true,
+            ual: true,
+            ipfsCid: true,
+            title: true,
+            mime: true,
+            size: true,
+            contentHash: true,
+            //   contentUrl: true,  // e.g., http(s) or local
+            //   authorAddress: true,
+            //   authorDid: true,
+            //   authorSignature: true,
+            //   authorVerified: true,
+            //   signedAt: true,
+        },
+    });
+    if (!asset) throw new Error("Asset not found");
+    if (asset.ual) return; // already published
+
+    const user = await prisma.user.findUnique({
+        where: { id: asset.userId! },
+        select: { id: true, userUAL: true, walletAddress: true },
+    });
+    if (!user) throw new Error("User not found");
+
+    // Build JSON-LD
+    // Use schema.org/MediaObject with a stable identifier (sha256)
+    const content: any = {
+        public: {
+            "@context": "https://schema.org",
+            "@type": "MediaObject",
+            title: asset.title || "Untitled",
+            encodingFormat: asset.mime || undefined,
+            contentSize: asset.size || undefined,
+            identifier: asset.contentHash, // e.g. sha256-... or 0x... (your format)
+            contentUrl: asset.ipfsCid ? `ipfs://${asset.ipfsCid}` : asset.contentUrl, // prefer ipfs when present
+            // Link to creator (prefer the user's Person KA if exists)
+            ...(user.userUAL
+                ? {
+                    creator: {
+                        "@id": user.userUAL, // link to Person KA
+                    },
+                }
+                : undefined),
+            // Include on-chain authorship (EIP-712) if you captured it
+            //   ...(asset.authorAddress
+            //     ? {
+            //         author: {
+            //           "@type": "Person",
+            //           identifier: asset.authorDid || asset.authorAddress,
+            //           ethereumAddress: asset.authorAddress,
+            //           authorshipClaim: {
+            //             type: "AuthorshipClaimV1",
+            //             alg: "eip712",
+            //             signature: asset.authorSignature,
+            //             signedAt: asset.signedAt?.toISOString?.(),
+            //             verified: !!asset.authorVerified,
+            //           },
+            //         },
+            //       }
+            //     : undefined),
+        },
+    };
+
+    // Publish
+    const result = await createKnowledgeAsset(content);
+
+    // Persist
+    await prisma.asset.update({
+        where: { id: asset.id },
+        data: { ual: result.UAL, status: "PUBLISHED" },
+    });
+
+    // (Optional) transfer on DKG/chain if you mint/transfer NFTs or asset ownership:
+    // if (user.walletAddress) await transferKA(UAL, user.walletAddress);
+
+    console.log("[worker] Content knowledge asset published: ", result.UAL);
 }
 
 /* ------------------------ main loop ------------------------ */
@@ -126,6 +223,19 @@ async function processOne() {
     const label = `${job.type}#${job.id}`;
     const attempt = job.attempts; // already incremented on claim
 
+    if (job.parentJobId) {
+        // check parent job is complete
+        const parentJob = await prisma.job.findFirst({
+            where: { id: job.parentJobId },
+            select: { id: true, status: true },
+        });
+
+        if (parentJob.status !== 'DONE') {
+            console.log(`[worker] parent job '${job.parentJobId}' not complete for job '${job.id}'`);
+            return true;
+        }
+    }
+
     try {
         switch (job.type) {
             case "CreateUserKA":
@@ -133,6 +243,9 @@ async function processOne() {
                 break;
             case "PinAssetToIPFS":
                 await processPinAssetToIPFS(job);
+                break;
+            case "PublishAssetKA":
+                await processPublishAssetKA(job);
                 break;
             default:
                 throw new Error(`Unknown job type: ${job.type}`);
@@ -166,6 +279,9 @@ async function bootstrap() {
     // basic env hints
     if (process.env.IPFS_ENDPOINT) {
         console.log("[worker] IPFS endpoint:", process.env.IPFS_ENDPOINT);
+    }
+    if (process.env.DKG_RPC_URL) {
+        console.log("[worker] DKG RPC url:", process.env.DKG_RPC_URL);
     }
 }
 

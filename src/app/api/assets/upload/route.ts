@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { saveFile } from "@/lib/storage";
 import { enqueuePinAssetToIPFS } from "@/lib/jobs";
+import { enqueuePublishAssetKA } from "@/lib/jobs";
 import sharp from "sharp";
 import crypto from "crypto";
 import path from "path";
@@ -111,8 +112,8 @@ export async function POST(req: Request) {
         ],
     });
 
-    // add an IPFS job to pin the asset to the worker queue
-    await enqueuePinAssetToIPFS(asset.id);
+    // create jobs for publishing 
+    await createChainedJobsForAssetUpload(asset.id);
 
     return NextResponse.json({
         ok: true,
@@ -124,6 +125,11 @@ export async function POST(req: Request) {
         mime,
         status: "UPLOADED",
     });
+}
+
+async function createChainedJobsForAssetUpload(assetId : string) {
+    const ipfsJob = await enqueuePinAssetToIPFS(assetId);
+    const contentAssetJob = await enqueuePublishAssetKA(assetId, ipfsJob.id)
 }
 
 /* ---------- helpers ---------- */

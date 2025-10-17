@@ -1,4 +1,4 @@
-import Image from "next/image";
+// src/components/assets/AssetsCard.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -10,22 +10,16 @@ const DKG_EXPLORE = process.env.NEXT_PUBLIC_DKG_EXPLORER_BASE || "https://dkg-te
 function fmtBytes(n?: number | null) {
     if (!n) return "—";
     const units = ["B", "KB", "MB", "GB", "TB"];
-    let i = 0;
-    let v = n;
-    while (v >= 1024 && i < units.length - 1) {
-        v /= 1024;
-        i++;
-    }
+    let i = 0, v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
     return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
+const thumbUrl = (a: any) => a.storageUrl || (a.ipfsCid ? `${IPFS_GATEWAY}${a.ipfsCid}` : undefined);
 
-function thumbUrl(row: any): string | undefined {
-    // Prefer storageUrl (S3/local static), fall back to IPFS gateway
-    return row.storageUrl || (row.ipfsCid ? `${IPFS_GATEWAY}${row.ipfsCid}` : undefined);
-}
-
-export default async function AssetsCard() {
+export default async function AssetsCard({ userId }: { userId: string }) {
+    // 👇 Only fetch assets belonging to this user
     const assets = await prisma.asset.findMany({
+        where: { userId },
         orderBy: [{ createdAt: "desc" }],
         take: 25,
         select: {
@@ -49,13 +43,13 @@ export default async function AssetsCard() {
         <Card>
             <CardHeader>
                 <div className="flex items-center justify-between">
-                    <h2 className="font-semibold">Assets</h2>
+                    <h2 className="font-semibold">My Assets</h2>
                     <span className="text-sm text-slate-500">Showing {assets.length} latest</span>
                 </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
                 {assets.length === 0 ? (
-                    <div className="text-sm text-slate-600">No assets yet. Upload an image to see it here.</div>
+                    <div className="text-sm text-slate-600">You haven’t uploaded any assets yet.</div>
                 ) : (
                     <table className="w-full text-sm">
                         <thead className="text-left text-slate-500">
@@ -73,26 +67,16 @@ export default async function AssetsCard() {
                                     <td className="py-2 pr-3">
                                         <div className="flex gap-3">
                                             <div className="relative h-12 w-12 flex-shrink-0 rounded bg-slate-100 overflow-hidden">
-                                                {thumbUrl(a) ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={thumbUrl(a)}
-                                                        alt={a.name || "asset"}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <div className="h-full w-full grid place-items-center text-[10px] text-slate-500">No preview</div>
-                                                )}
+                                                {thumbUrl(a)
+                                                    ? <img src={thumbUrl(a)!} alt={a.title || "asset"} className="h-full w-full object-cover" />
+                                                    : <div className="h-full w-full grid place-items-center text-[10px] text-slate-500">No preview</div>}
                                             </div>
                                             <div className="space-y-0.5">
-                                                <div className="font-medium">{a.name || "Untitled"}</div>
-                                                <div className="text-xs text-slate-500">
-                                                    {a.mime || "—"} · {fmtBytes(a.size)}
-                                                </div>
+                                                <div className="font-medium">{a.title || "Untitled"}</div>
+                                                <div className="text-xs text-slate-500">{a.mime || "—"} · {fmtBytes(a.size)}</div>
                                             </div>
                                         </div>
                                     </td>
-
                                     <td className="py-2 pr-3">
                                         <div className="space-y-1">
                                             <AssetStatusBadge status={(a.status as any) || "DRAFT"} />
@@ -103,46 +87,19 @@ export default async function AssetsCard() {
                                             )}
                                         </div>
                                     </td>
-
                                     <td className="py-2 pr-3">
                                         <div className="text-xs text-slate-600 space-y-1">
-                                            <div>
-                                                <span className="text-slate-500">UAL:</span>{" "}
-                                                {a.ual ? <span className="font-mono break-all">{a.ual}</span> : "—"}
-                                            </div>
-                                            <div>
-                                                <span className="text-slate-500">CID:</span>{" "}
-                                                {a.ipfsCid ? <span className="font-mono break-all">{a.ipfsCid}</span> : "—"}
-                                            </div>
+                                            <div><span className="text-slate-500">UAL:</span> {a.ual ? <span className="font-mono break-all">{a.ual}</span> : "—"}</div>
+                                            <div><span className="text-slate-500">CID:</span> {a.ipfsCid ? <span className="font-mono break-all">{a.ipfsCid}</span> : "—"}</div>
                                         </div>
                                     </td>
-
                                     <td className="py-2 pr-3">
                                         <div className="text-xs space-y-1">
-                                            {a.storageUrl && (
-                                                <div>
-                                                    <Link href={a.storageUrl} target="_blank" className="underline">
-                                                        Open (HTTP)
-                                                    </Link>
-                                                </div>
-                                            )}
-                                            {a.ipfsCid && (
-                                                <div>
-                                                    <Link href={`${IPFS_GATEWAY}${a.ipfsCid}`} target="_blank" className="underline">
-                                                        View on IPFS
-                                                    </Link>
-                                                </div>
-                                            )}
-                                            {a.ual && (
-                                                <div>
-                                                    <Link href={`${DKG_EXPLORE}${encodeURIComponent(a.ual)}`} target="_blank" className="underline">
-                                                        DKG Explorer
-                                                    </Link>
-                                                </div>
-                                            )}
+                                            {a.storageUrl && <div><Link href={a.storageUrl} target="_blank" className="underline">Open (HTTP)</Link></div>}
+                                            {a.ipfsCid && <div><Link href={`${IPFS_GATEWAY}${a.ipfsCid}`} target="_blank" className="underline">View on IPFS</Link></div>}
+                                            {a.ual && <div><Link href={`${DKG_EXPLORE}${encodeURIComponent(a.ual)}`} target="_blank" className="underline">DKG Explorer</Link></div>}
                                         </div>
                                     </td>
-
                                     <td className="py-2 pr-3 text-xs text-slate-600 whitespace-nowrap">
                                         {a.createdAt ? new Date(a.createdAt).toLocaleString() : "—"}
                                     </td>

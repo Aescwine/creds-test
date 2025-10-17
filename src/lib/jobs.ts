@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-export async function enqueueCreateUserKA(userId: string, content: object) {
+export async function enqueueCreateUserKA(userId: string) {
     // Avoid duplicates: only one active job per user
     const existing = await prisma.job.findFirst({
         where: {
@@ -12,12 +12,11 @@ export async function enqueueCreateUserKA(userId: string, content: object) {
     });
 
     if (!existing) {
-        console.log('Creating CreateUserKA job for user: ', userId)
         await prisma.job.create({
             data: {
                 type: "CreateUserKA",
                 subjectId: userId,
-                payload: content,
+                payload: {},
                 status: "QUEUED",
                 maxAttempts: 5,
             },
@@ -33,19 +32,47 @@ export async function enqueueCreateUserKA(userId: string, content: object) {
 export async function enqueuePinAssetToIPFS(assetId: string) {
     // dedupe: any queued/running job for this asset?
     const existing = await prisma.job.findFirst({
-        where: { type: "PinAssetToIPFS", subjectId: assetId, status: { in: ["QUEUED", "RUNNING"] } },
+        where: {
+            type: "PinAssetToIPFS",
+            subjectId: assetId,
+            status: { in: ["QUEUED", "RUNNING"] }
+        },
         select: { id: true },
     });
 
-    if (!existing) {
-        await prisma.job.create({
-            data: {
-                type: "PinAssetToIPFS",
-                subjectId: assetId,
-                payload: { assetId },
-                status: "QUEUED",
-                maxAttempts: 5,
-            },
-        });
-    }
+    if (existing) return existing;
+
+    return prisma.job.create({
+        data: {
+            type: "PinAssetToIPFS",
+            subjectId: assetId,
+            payload: {},
+            status: "QUEUED",
+            maxAttempts: 5,
+        },
+    });
+}
+
+export async function enqueuePublishAssetKA(assetId: string, parentJobId?: string) {
+    // idempotency: avoid duplicate queued/running publish jobs for same asset
+    const existing = await prisma.job.findFirst({
+        where: {
+            type: "PublishAssetKA",
+            subjectId: assetId,
+            status: { in: ["QUEUED", "RUNNING"] as any }
+        },
+        select: { id: true },
+    });
+    if (existing) return existing;
+
+    return prisma.job.create({
+        data: {
+            type: "PublishAssetKA",
+            subjectId: assetId,
+            status: "QUEUED",
+            payload: {},
+            parentJobId,
+            maxAttempts: 5,
+        },
+    });
 }
